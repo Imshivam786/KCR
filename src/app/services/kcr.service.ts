@@ -1,4 +1,4 @@
-import { HttpClient, HttpEvent, HttpParams, HttpRequest } from '@angular/common/http';
+import { HttpClient, HttpEvent, HttpRequest } from '@angular/common/http';
 import { Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
 
@@ -14,58 +14,80 @@ export interface EnhancedWordAnalysis {
   providedIn: 'root'
 })
 export class KcrService {
-  private base = 'http://localhost:8000';
+  private baseUrl = 'http://localhost:8000';
 
   constructor(private http: HttpClient) {}
 
-  listImages(): Observable<string[]> {
-    return this.http.get<string[]>(`${this.base}/list_images`);
+   getCases(page: number = 1, pageSize: number = 10): Observable<any> {
+    return this.http.get(`${this.baseUrl}/cases?page=${page}&page_size=${pageSize}`);
   }
-  upload(file: File): Observable<HttpEvent<any>> {
-    const fd = new FormData();
-    fd.append('file', file, file.name);
 
-    const req = new HttpRequest('POST', `${this.base}/upload`, fd, {
-      reportProgress: true,
-      responseType: 'json'
+  // Delete a case and all its images
+  deleteCase(caseId: string): Observable<any> {
+    return this.http.delete(`${this.baseUrl}/cases/${caseId}`);
+  }
+
+  // Get all images for a specific case
+  getCaseImages(caseId: string): Observable<any[]> {
+    return this.http.get<any[]>(`${this.baseUrl}/cases/${caseId}/images`);
+  }
+
+  // Upload image and create new case
+  uploadToNewCase(file: File): Observable<HttpEvent<any>> {
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    const req = new HttpRequest('POST', `${this.baseUrl}/cases/upload`, formData, {
+      reportProgress: true
     });
     return this.http.request(req);
   }
 
-  deleteImage(filename: string): Observable<any> {
-    const safe = encodeURIComponent(filename);
-    return this.http.delete(`${this.base}/delete/${safe}`);
+  // Upload image to existing case
+  uploadToCase(caseId: string, file: File): Observable<HttpEvent<any>> {
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    const req = new HttpRequest('POST', `${this.baseUrl}/cases/${caseId}/images`, formData, {
+      reportProgress: true
+    });
+    return this.http.request(req);
   }
 
+  // Delete an image from a case
+  deleteImage(caseId: string, imageId: string): Observable<any> {
+    return this.http.delete(`${this.baseUrl}/cases/${caseId}/images/${imageId}`);
+  }
+
+  // Analyze an image (OCR processing)
+  analyzeImage(caseId: string, imageId: string, params: any = {}): Observable<any> {
+    return this.http.post(`${this.baseUrl}/cases/${caseId}/images/${imageId}/analyze`, params);
+  }
+
+  // ===== KEEP YOUR EXISTING METHODS =====
   
-  charAnalyse(filename?: string, params?: { [k: string]: any }): Observable<CharItem[]> {
-    let httpParams = new HttpParams();
-    if (filename) {
-      httpParams = httpParams.set('filename', filename);
-    }
-    if (params) {
-      Object.keys(params).forEach(k => {
-        if (params[k] !== undefined && params[k] !== null) {
-          httpParams = httpParams.set(k, String(params[k]));
-        }
-      });
-    }
-    return this.http.get<CharItem[]>(`${this.base}/char_analyse`, { params: httpParams });
+  listImages(): Observable<string[]> {
+    // Keep for backward compatibility if needed
+    return this.http.get<string[]>(`${this.baseUrl}/list`);
   }
 
- 
-  wordAnalyse(filename?: string, params?: { [k: string]: any }): Observable<EnhancedWordAnalysis[]> {
-    let httpParams = new HttpParams();
-    if (filename) {
-      httpParams = httpParams.set('filename', filename);
-    }
-    if (params) {
-      Object.keys(params).forEach(k => {
-        if (params[k] !== undefined && params[k] !== null) {
-          httpParams = httpParams.set(k, String(params[k]));
-        }
-      });
-    }
-    return this.http.get<EnhancedWordAnalysis[]>(`${this.base}/word_analyse_with_image`, { params: httpParams });
+  charAnalyse(filename: string, tuned: any = {}): Observable<CharItem[]> {
+    // Keep existing implementation
+    return this.http.post<CharItem[]>(`${this.baseUrl}/char-analyse`, { filename, ...tuned });
+  }
+
+  wordAnalyse(filename: string, tuned: any = {}): Observable<EnhancedWordAnalysis[]> {
+    // Keep existing implementation
+    return this.http.post<EnhancedWordAnalysis[]>(`${this.baseUrl}/word-analyse`, { filename, ...tuned });
+  }
+
+  upload(file: File): Observable<HttpEvent<any>> {
+    // Keep for backward compatibility if needed
+    const formData = new FormData();
+    formData.append('file', file);
+    const req = new HttpRequest('POST', `${this.baseUrl}/upload`, formData, {
+      reportProgress: true
+    });
+    return this.http.request(req);
   }
 }

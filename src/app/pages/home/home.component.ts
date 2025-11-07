@@ -1,7 +1,13 @@
 import { HttpEventType } from '@angular/common/http';
 import { Component, OnInit } from '@angular/core';
-import { finalize } from 'rxjs/operators';
-import { CharItem, EnhancedWordAnalysis, KcrService } from '../../services/kcr.service';
+import { Router } from '@angular/router';
+import { KcrService } from '../../services/kcr.service';
+
+export interface Case {
+  case_id: string;
+  created_at: string;
+  image_count: number;
+}
 
 @Component({
   selector: 'app-home',
@@ -9,59 +15,72 @@ import { CharItem, EnhancedWordAnalysis, KcrService } from '../../services/kcr.s
   styleUrl: './home.component.scss'
 })
 export class HomeComponent implements OnInit {
-  imagesList: string[] = [];
-  selectedImage: string | null = null;
-  results: any[] | null = null;
+  cases: Case[] = [];
+  loading = false;
   uploading = false;
   uploadProgress = 0;
-  backendBase = 'http://localhost:8000';
-  processing: boolean = false;
+  
+  // Pagination
+  currentPage = 1;
+  pageSize = 10;
+  totalItems = 0;
+  totalPages = 0;
+  Math = Math;
 
-  constructor(private kcr: KcrService) {}
+  constructor(
+    private kcr: KcrService,
+    private router: Router
+  ) {}
 
   ngOnInit(): void {
-    this.refreshList();
+    this.loadCases();
   }
 
-  refreshList() {
-    this.kcr.listImages().subscribe({
-      next: list => {
-        this.imagesList = list;
-        // if nothing selected, pick first
-        if (!this.selectedImage && list.length) {
-          this.selectedImage = list[0];
-        }
+  loadCases() {
+    this.loading = true;
+    this.kcr.getCases(this.currentPage, this.pageSize).subscribe({
+      next: response => {
+        this.cases = response.cases;
+        this.totalItems = response.total;
+        this.totalPages = Math.ceil(this.totalItems / this.pageSize);
+        this.loading = false;
       },
-      error: err => console.error('Failed to load image list', err)
+      error: err => {
+        console.error('Failed to load cases', err);
+        this.loading = false;
+      }
     });
   }
 
-  selectImage(filename: string) {
-    this.selectedImage = filename;
-    this.results = null;
+  refreshCases() {
+    this.currentPage = 1;
+    this.loadCases();
   }
 
   onFileSelected(ev: any) {
     const file: File = ev.target.files && ev.target.files[0];
     if (!file) return;
+    
     this.uploading = true;
     this.uploadProgress = 0;
 
-    this.kcr.upload(file).subscribe({
+    // Upload file - this will create a new case
+    this.kcr.uploadToNewCase(file).subscribe({
       next: event => {
         if (event.type === HttpEventType.UploadProgress) {
           this.uploadProgress = Math.round((100 * (event.loaded || 0)) / (event.total || 1));
         } else if (event.type === HttpEventType.Response) {
           this.uploading = false;
           this.uploadProgress = 100;
-          // refresh list and auto-select uploaded file if server returns filename
+          
           const body: any = event.body;
-          if (body && body.filename) {
-            this.refreshList();
-            // small delay to let list refresh
-            setTimeout(() => this.selectImage(body.filename), 300);
+          if (body && body.case_id) {
+            // Navigate to the newly created case
+            setTimeout(() => {
+              this.router.navigate(['/case', body.case_id]);
+            }, 500);
           } else {
-            this.refreshList();
+            this.refreshCases();
           }
         }
       },
@@ -71,58 +90,40 @@ export class HomeComponent implements OnInit {
         this.uploadProgress = 0;
       }
     });
+
+    ev.target.value = '';
   }
 
-  deleteImage(filename: string) {
-    if (!confirm(`Delete image ${filename}?`)) return;
-    this.kcr.deleteImage(filename).subscribe({
+  deleteCase(caseId: string) {
+    if (!confirm('Delete this case and all its images?')) return;
+    
+    this.kcr.deleteCase(caseId).subscribe({
       next: () => {
-        if (this.selectedImage === filename) this.selectedImage = null;
-        this.refreshList();
+        this.loadCases();
       },
       error: err => console.error('Delete failed', err)
     });
   }
 
-  // char analyse for selected file
-  doCharAnalyse() {
-    if (!this.selectedImage) return;
-    // example: pass tuned params by second arg if you exposed them
-    const tuned = {
-     
-    };
-    this.kcr.charAnalyse(this.selectedImage, tuned).subscribe({
-      next: (data: CharItem[]) => {
-        this.results = data;
-      },
-      error: err => {
-        console.error('Char analyse error', err);
-        this.results = null;
-      }
-    });
+  goToPage(page: number) {
+    if (page < 1 || page > this.totalPages) return;
+    this.currentPage = page;
+    this.loadCases();
   }
 
-  // word analyse
-  doWordAnalyse() {
-    if (!this.selectedImage) return;
-    const tuned = {}; // or pass tuned params
-    this.processing = true;    // show overlay
-
-    this.kcr.wordAnalyse(this.selectedImage, tuned)
-      .pipe(finalize(() => { this.processing = false; })) // always hide overlay
-      .subscribe({
-        next: (data: EnhancedWordAnalysis[]) => {
-          this.results = data;
-          console.log(this.results[0].regions)
-        },
-        error: err => {
-          console.error('Word analyse error', err);
-          this.results = null;
-        }
-      });
-  }
-
-  getImageUrl(filename: string): string {
-    return `${this.backendBase}/uploads/${encodeURIComponent(filename)}`;
+  getPageNumbers(): number[] {
+    const pages: number[] = [];
+    const maxVisible = 5;
+    let start = Math.max(1, this.currentPage - Math.floor(maxVisible / 2));
+    let end = Math.min(this.totalPages, start + maxVisible - 1);
+    
+    if (end - start < maxVisible - 1) {
+      start = Math.max(1, end - maxVisible + 1);
+    }
+    
+    for (let i = start; i <= end; i++) {
+      pages.push(i);
+    }
+    return pages;
   }
 }

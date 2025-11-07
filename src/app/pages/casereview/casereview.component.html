@@ -1,0 +1,169 @@
+<div class="container-fluid">
+  <!-- Breadcrumb -->
+  <nav aria-label="breadcrumb" class="pt-3 pb-2">
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item"><a [routerLink]="['/']">Cases</a></li>
+      <li class="breadcrumb-item active" aria-current="page">
+        Case: {{ caseId | slice:0:8 }}...
+      </li>
+    </ol>
+  </nav>
+
+  <div class="review-container">
+    <!-- Left Panel: Image List -->
+    <div class="images-sidebar">
+      <div class="sidebar-header">
+        <h6 class="mb-0">Images</h6>
+        <button class="btn btn-sm btn-outline-secondary" 
+                (click)="refreshList()" 
+                title="Refresh list">
+          <i class="fa-solid fa-refresh"></i>
+        </button>
+      </div>
+
+      <div class="images-list-container">
+        <div *ngIf="imagesList?.length === 0" class="text-muted text-center py-4 small">
+          <i class="fa-solid fa-inbox"></i>
+          <p class="mt-2 mb-0">No images</p>
+        </div>
+
+        <div class="images-list">
+          <div *ngFor="let image of imagesList"
+               class="image-thumbnail"
+               [class.active]="selectedImage?.image_id === image.image_id"
+               (click)="selectImage(image)"
+               [title]="image.filename">
+            <img [src]="getImageUrl(image.image_id)" 
+                 alt="thumb" 
+                 class="thumb-img" />
+            <button class="btn-delete-thumb" 
+                    (click)="deleteImage(image.image_id); $event.stopPropagation()"
+                    title="Delete image">
+              <i class="fa-solid fa-trash-alt"></i>
+            </button>
+            <!-- Status indicator -->
+            <div class="status-badge">
+              <i *ngIf="image.ocr_result" 
+                 class="fa-solid fa-check-circle text-success" 
+                 title="Analyzed"></i>
+              <i *ngIf="!image.ocr_result" 
+                 class="fa-solid fa-clock text-warning" 
+                 title="Not analyzed"></i>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <hr class="my-3" />
+
+      <!-- Upload Section -->
+      <div class="upload-section">
+        <label class="btn btn-primary btn-sm w-100">
+          <i class="fa-solid fa-plus me-1"></i>Add Image
+          <input type="file" (change)="onFileSelected($event)" hidden accept="image/*" />
+        </label>
+
+        <div *ngIf="uploading" class="mt-2">
+          <div class="progress" style="height: 5px;">
+            <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                 role="progressbar"
+                 [style.width.%]="uploadProgress"></div>
+          </div>
+          <small class="text-muted d-block mt-1">{{ uploadProgress }}%</small>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right Panel: Main Image Viewer -->
+    <div class="image-viewer">
+      <div *ngIf="!selectedImage" class="no-selection">
+        <i class="fa-solid fa-image"></i>
+        <p>Select an image to view</p>
+      </div>
+
+      <div *ngIf="selectedImage" class="viewer-content">
+        <!-- Image Display -->
+        <div class="image-display-area">
+          <img [src]="getImageUrl(selectedImage.image_id)" 
+               alt="preview" 
+               class="display-img" />
+        </div>
+
+        <!-- Image Info and Actions -->
+        <div class="viewer-footer">
+          <div class="image-info">
+            <h6 class="filename mb-1">{{ selectedImage.filename }}</h6>
+            <small class="text-muted d-block mb-2">
+              Uploaded: {{ selectedImage.uploaded_at | date:'short' }}
+            </small>
+            <small class="text-muted d-block" *ngIf="selectedImage.analyzed_at">
+              Analyzed: {{ selectedImage.analyzed_at | date:'short' }}
+            </small>
+          </div>
+
+          <button class="btn btn-info btn-analyze" 
+                  (click)="doWordAnalyse()" 
+                  [disabled]="processing"
+                  [class.processing]="processing">
+            <i class="fa-solid fa-wand-magic-sparkles me-2"></i>
+            <span *ngIf="!selectedImage.ocr_result && !processing">Analyze</span>
+            <span *ngIf="selectedImage.ocr_result && !processing">Regenerate</span>
+            <span *ngIf="processing">
+              <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+              Processing...
+            </span>
+          </button>
+        </div>
+
+        <!-- OCR Results -->
+        <div class="results-section" *ngIf="selectedImage.ocr_result">
+          <div class="results-header">
+            <h4 class="mb-0">Results</h4>
+          </div>
+          <div class="results-content">
+            <table class="table table-sm mb-0">
+              <thead>
+                <tr>
+                  <th class="text-truncate">Text</th>
+                  <th class="text-center" style="width: 120px;">Confidence</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr *ngFor="let r of selectedImage.ocr_result[0]?.regions">
+                  <td class="text-truncate" [title]="r.region_text">{{ r.region_text }}</td>
+                  <td class="text-center">
+                    <span class="badge" 
+                          [ngClass]="r.region_confidence > 0.8 ? 'bg-success' : r.region_confidence > 0.5 ? 'bg-warning' : 'bg-danger'">
+                      {{ r.region_confidence | number:'1.2-2' }}
+                    </span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+            
+            <div class="results-info mt-2">
+              <small class="text-muted">
+                <strong>Total regions:</strong> {{ selectedImage.ocr_result[0]?.regions?.length || 0 }} |
+                <strong>Avg Confidence:</strong> {{ getAverageConfidence(selectedImage.ocr_result[0]?.regions) | number:'1.2-2' }}
+              </small>
+            </div>
+          </div>
+        </div>
+
+        <div *ngIf="!selectedImage.ocr_result" class="alert alert-info mb-0 mt-3">
+          <i class="fa-solid fa-info-circle me-2"></i>
+          Click "Analyze" to process this image with OCR.
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Processing Overlay -->
+<div *ngIf="processing" class="processing-overlay">
+  <div class="processing-content text-center">
+    <div class="spinner-border text-primary" role="status" aria-hidden="true"></div>
+    <div class="mt-3 fw-semibold">Processing image...</div>
+    <div class="small text-muted">This may take a few seconds.</div>
+  </div>
+</div>
